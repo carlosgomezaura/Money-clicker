@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Money Clicker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon">💰</span>
+        <span>MONEY CLICKER</span>
+      </div>
+      <button class="icon-button" id="settingsButton" type="button" aria-label="Abrir configuración">⚙️</button>
+    </header>
+
+    <main class="game-layout">
+      <section class="money-stage" aria-labelledby="moneyTitle">
+        <p class="eyebrow" id="moneyTitle">DINERO</p>
+        <div class="money-display" id="moneyDisplay">$0</div>
+        <div class="income-row">
+          <span id="clickPower">+$1 / click</span>
+          <span id="secondPower">+$0 / sec</span>
+          <span id="multiplierDisplay">x1</span>
+        </div>
+
+        <div class="level-panel">
+          <div class="level-meta">
+            <strong id="levelDisplay">Nivel 1</strong>
+            <span id="xpDisplay">0/100 XP</span>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill" id="xpFill"></div>
+          </div>
+        </div>
+
+        <div class="click-zone" id="clickZone">
+          <div class="floating-layer" id="floatingLayer" aria-hidden="true"></div>
+          <button class="click-button" id="clickButton" type="button">
+            <span class="coin">💰</span>
+            <span>PULSAR</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="section-block" aria-labelledby="upgradesTitle">
+        <div class="section-heading">
+          <h2 id="upgradesTitle">MEJORAS</h2>
+        </div>
+        <div class="upgrade-list" id="upgradeList"></div>
+      </section>
+
+      <section class="section-block prestige-block" aria-labelledby="prestigeTitle">
+        <div class="section-heading">
+          <h2 id="prestigeTitle">💎 PRESTIGIO</h2>
+          <span id="prestigePoints">0</span>
+        </div>
+        <p id="prestigeInfo">Alcanza $1M para renacer con una bonificación permanente.</p>
+        <button class="primary-button" id="prestigeButton" type="button">PRESTIGIAR</button>
+      </section>
+
+      <section class="section-block" aria-labelledby="achievementsTitle">
+        <div class="section-heading">
+          <h2 id="achievementsTitle">LOGROS</h2>
+          <span id="achievementCount">0/0</span>
+        </div>
+        <div class="achievement-grid" id="achievementList"></div>
+      </section>
+
+      <section class="section-block" aria-labelledby="statsTitle">
+        <div class="section-heading">
+          <h2 id="statsTitle">ESTADÍSTICAS</h2>
+        </div>
+        <div class="stats-grid" id="statsList"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <div class="level-burst" id="levelBurst" aria-hidden="true"></div>
+
+  <dialog class="modal" id="settingsModal">
+    <form method="dialog" class="modal-content">
+      <div class="modal-title">
+        <h2>⚙️ CONFIGURACIÓN</h2>
+        <button class="icon-button" value="cancel" aria-label="Cerrar configuración">✕</button>
+      </div>
+      <label class="setting-row">
+        <span>🔊 Sonido</span>
+        <button class="toggle-button" id="soundToggle" type="button">ON</button>
+      </label>
+      <label class="setting-row">
+        <span>✨ Animaciones</span>
+        <button class="toggle-button" id="animationToggle" type="button">ON</button>
+      </label>
+      <div class="modal-actions stacked">
+        <button class="primary-button" id="manualSaveButton" type="button">💾 Guardar partida</button>
+        <button class="danger-button" id="resetButton" type="button">🗑️ Borrar partida</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="prestigeModal">
+    <div class="modal-content">
+      <div class="modal-title">
+        <h2>¿Seguro que quieres hacer prestigio?</h2>
+      </div>
+      <div class="prestige-summary" id="prestigeSummary"></div>
+      <div class="modal-actions">
+        <button class="secondary-button" id="cancelPrestigeButton" type="button">CANCELAR</button>
+        <button class="primary-button" id="confirmPrestigeButton" type="button">HACER PRESTIGIO</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal" id="offlineModal">
+    <div class="modal-content offline-content">
+      <div class="modal-title">
+        <h2>🌙 MIENTRAS ESTABAS FUERA</h2>
+      </div>
+      <p id="offlineTime">Han pasado 0min.</p>
+      <p>Tu negocio generó:</p>
+      <div class="offline-reward" id="offlineReward">+$0</div>
+      <div class="modal-actions">
+        <button class="primary-button" id="collectOfflineButton" type="button">RECOGER</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="script.js"></script>
+</body>
+</html>
