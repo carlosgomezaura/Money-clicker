@@ -1,676 +1,800 @@
-const STORAGE_KEY = "moneyClickerSaveV1";
-const SAVE_VERSION = 1;
-const OFFLINE_LIMIT_SECONDS = 8 * 60 * 60;
-const INVESTMENT_INTERVAL = 10;
+(function () {
+  "use strict";
 
-const upgradeDefinitions = [
-  {
-    id: "goldenFinger",
-    icon: "👆",
-    name: "Dedo dorado",
-    unlockAt: 0,
-    baseCost: 10,
-    growth: 1.15,
-    summary: level => `+$${formatNumber(level + 1)} / click`,
-    effect: level => `+$${formatNumber(level)} / click`
-  },
-  {
-    id: "autoClicker",
-    icon: "🤖",
-    name: "Auto Clicker",
-    unlockAt: 100,
-    baseCost: 100,
-    growth: 1.18,
-    summary: level => `+$${formatNumber(level + 1)} / sec`,
-    effect: level => `+$${formatNumber(level)} / sec`
-  },
-  {
-    id: "multiplier",
-    icon: "⚡",
-    name: "Multiplicador",
-    unlockAt: 1000,
-    baseCost: 1000,
-    growth: 1.25,
-    summary: level => `x${(1 + (level + 1) * 0.1).toFixed(2)} global`,
-    effect: level => `x${(1 + level * 0.1).toFixed(2)} global`
-  },
-  {
-    id: "bank",
-    icon: "🏦",
-    name: "Banco",
-    unlockAt: 10000,
-    baseCost: 10000,
-    growth: 1.22,
-    summary: level => `+$${formatNumber((level + 1) * 25)} / sec`,
-    effect: level => `+$${formatNumber(level * 25)} / sec`
-  },
-  {
-    id: "investment",
-    icon: "📈",
-    name: "Inversión",
-    unlockAt: 100000,
-    baseCost: 100000,
-    growth: 1.28,
-    summary: level => `+$${formatNumber((level + 1) * 1000)} cada 10s`,
-    effect: level => `+$${formatNumber(level * 1000)} cada 10s`
-  }
-];
+  const SAVE_KEY = "moneyClickerSaveV1";
+  const AUTOSAVE_INTERVAL = 10000;
+  const OFFLINE_LIMIT_SECONDS = 8 * 60 * 60;
+  const PRESTIGE_BASE = 1000000;
+  const RESOURCE_ICON = "⚡";
 
-const achievements = [
-  { id: "firstDollar", title: "🏆 Primer dólar", text: "Consigue $1.", check: game => game.totalMoney >= 1 },
-  { id: "firstThousand", title: "🏆 Primeros mil", text: "Consigue $1,000.", check: game => game.totalMoney >= 1000 },
-  { id: "millionaire", title: "🏆 Millonario", text: "Consigue $1,000,000.", check: game => game.totalMoney >= 1000000 },
-  { id: "proClicker", title: "🏆 Clicker profesional", text: "Haz 1,000 clicks.", check: game => game.clicks >= 1000 },
-  { id: "addict", title: "🏆 Adicto", text: "Haz 10,000 clicks.", check: game => game.clicks >= 10000 },
-  { id: "rebirth", title: "🏆 Renacimiento", text: "Haz tu primer prestigio.", check: game => game.prestige >= 1 },
-  { id: "tycoon", title: "🏆 Magnate", text: "Haz 10 prestigios.", check: game => game.prestige >= 10 }
-];
+  const defaultUpgrades = {
+    goldenFinger: {
+      id: "goldenFinger",
+      icon: "🖥️",
+      name: "GPU de última generación",
+      baseCost: 10,
+      growth: 1.15,
+      unlockAt: 0,
+      effect: 1,
+      type: "click",
+      description: "+{value} cómputo por click"
+    },
+    autoClicker: {
+      id: "autoClicker",
+      icon: "🤖",
+      name: "Agente autónomo",
+      baseCost: 100,
+      growth: 1.17,
+      unlockAt: 100,
+      effect: 1,
+      type: "auto",
+      description: "+{value} por segundo"
+    },
+    multiplier: {
+      id: "multiplier",
+      icon: "✨",
+      name: "Modelo avanzado",
+      baseCost: 1000,
+      growth: 1.42,
+      unlockAt: 1000,
+      effect: 0.1,
+      type: "multiplier",
+      description: "+{value}% a toda la potencia"
+    },
+    bank: {
+      id: "bank",
+      icon: "🏢",
+      name: "Centro de datos",
+      baseCost: 10000,
+      growth: 1.22,
+      unlockAt: 10000,
+      effect: 15,
+      type: "auto",
+      description: "+{value} por segundo"
+    },
+    investment: {
+      id: "investment",
+      icon: "📈",
+      name: "Investigación de IA",
+      baseCost: 100000,
+      growth: 1.28,
+      unlockAt: 100000,
+      effect: 5000,
+      interval: 10,
+      type: "burst",
+      description: "+{value} cada 10s"
+    }
+  };
 
-const milestones = [
-  { value: 100, title: "Primer impulso", text: "Has conseguido $100." },
-  { value: 1000, title: "Primeros mil", text: "Has conseguido $1,000." },
-  { value: 10000, title: "Negocio en marcha", text: "Has conseguido $10,000." },
-  { value: 100000, title: "Seis cifras", text: "Has conseguido $100,000." },
-  { value: 1000000, title: "¡PRIMER MILLÓN!", text: "Has conseguido $1,000,000." },
-  { value: 10000000, title: "Imperio serio", text: "Has conseguido $10,000,000." },
-  { value: 1000000000, title: "Billonario", text: "Has conseguido $1,000,000,000." }
-];
-
-const defaultState = () => ({
-  version: SAVE_VERSION,
-  money: 0,
-  totalMoney: 0,
-  maxMoney: 0,
-  runMaxMoney: 0,
-  level: 1,
-  xp: 0,
-  prestige: 0,
-  clicks: 0,
-  upgrades: Object.fromEntries(upgradeDefinitions.map(upgrade => [upgrade.id, 0])),
-  achievements: {},
-  milestones: {},
-  settings: {
-    sound: true,
-    animations: true
-  },
-  lastSaved: Date.now()
-});
-
-let state = defaultState();
-let audioContext = null;
-let investmentTimer = 0;
-let pendingOfflineReward = 0;
-
-const elements = {
-  moneyDisplay: document.getElementById("moneyDisplay"),
-  clickPower: document.getElementById("clickPower"),
-  secondPower: document.getElementById("secondPower"),
-  multiplierDisplay: document.getElementById("multiplierDisplay"),
-  levelDisplay: document.getElementById("levelDisplay"),
-  xpDisplay: document.getElementById("xpDisplay"),
-  xpFill: document.getElementById("xpFill"),
-  clickButton: document.getElementById("clickButton"),
-  clickZone: document.getElementById("clickZone"),
-  floatingLayer: document.getElementById("floatingLayer"),
-  upgradeList: document.getElementById("upgradeList"),
-  prestigePoints: document.getElementById("prestigePoints"),
-  prestigeInfo: document.getElementById("prestigeInfo"),
-  prestigeButton: document.getElementById("prestigeButton"),
-  achievementList: document.getElementById("achievementList"),
-  achievementCount: document.getElementById("achievementCount"),
-  statsList: document.getElementById("statsList"),
-  toastStack: document.getElementById("toastStack"),
-  settingsButton: document.getElementById("settingsButton"),
-  settingsModal: document.getElementById("settingsModal"),
-  soundToggle: document.getElementById("soundToggle"),
-  animationToggle: document.getElementById("animationToggle"),
-  manualSaveButton: document.getElementById("manualSaveButton"),
-  resetButton: document.getElementById("resetButton"),
-  prestigeModal: document.getElementById("prestigeModal"),
-  prestigeSummary: document.getElementById("prestigeSummary"),
-  cancelPrestigeButton: document.getElementById("cancelPrestigeButton"),
-  confirmPrestigeButton: document.getElementById("confirmPrestigeButton"),
-  offlineModal: document.getElementById("offlineModal"),
-  offlineTime: document.getElementById("offlineTime"),
-  offlineReward: document.getElementById("offlineReward"),
-  collectOfflineButton: document.getElementById("collectOfflineButton"),
-  levelBurst: document.getElementById("levelBurst")
-};
-
-function formatNumber(value) {
-  const number = Math.max(0, Number(value) || 0);
-  const suffixes = [
-    { value: 1e15, label: "Qa" },
-    { value: 1e12, label: "T" },
-    { value: 1e9, label: "B" },
-    { value: 1e6, label: "M" }
+  const achievements = [
+    { id: "firstDollar", icon: "🏆", title: "Primer token", text: "Genera ⚡1 crédito de cómputo.", check: function () { return state.totalEarned >= 1; } },
+    { id: "firstThousand", icon: "🏆", title: "Primeros mil tokens", text: "Genera ⚡1,000 créditos de cómputo.", check: function () { return state.totalEarned >= 1000; } },
+    { id: "millionaire", icon: "🏆", title: "Primer millón de tokens", text: "Genera ⚡1,000,000 créditos de cómputo.", check: function () { return state.totalEarned >= 1000000; } },
+    { id: "proClicker", icon: "🏆", title: "Entrenador de modelos", text: "Haz 1,000 ciclos de entrenamiento.", check: function () { return state.clicks >= 1000; } },
+    { id: "addicted", icon: "🏆", title: "Arquitecto obsesivo", text: "Haz 10,000 ciclos de entrenamiento.", check: function () { return state.clicks >= 10000; } },
+    { id: "rebirth", icon: "🏆", title: "Nueva arquitectura", text: "Inicia tu primera nueva generación.", check: function () { return state.prestige >= 1; } },
+    { id: "tycoon", icon: "🏆", title: "Superinteligencia estable", text: "Inicia 10 nuevas generaciones.", check: function () { return state.prestige >= 10; } }
   ];
 
-  for (const suffix of suffixes) {
-    if (number >= suffix.value) {
-      const formatted = (number / suffix.value).toFixed(number >= suffix.value * 100 ? 0 : 1);
-      return `${formatted.replace(/\.0$/, "")}${suffix.label}`;
-    }
-  }
+  const milestones = [
+    { amount: 100, title: "🏆 ¡PRIMER CLÚSTER!", body: "Has generado ⚡100 créditos de cómputo." },
+    { amount: 1000, title: "🏆 ¡PRIMEROS MIL TOKENS!", body: "Has generado ⚡1,000 créditos de cómputo." },
+    { amount: 10000, title: "🏆 ¡LABORATORIO ACTIVO!", body: "Has generado ⚡10,000 créditos de cómputo." },
+    { amount: 100000, title: "🏆 ¡ENTRENAMIENTO MASIVO!", body: "Has generado ⚡100,000 créditos de cómputo." },
+    { amount: 1000000, title: "🏆 ¡PRIMER MILLÓN DE TOKENS!", body: "Has generado ⚡1,000,000 créditos de cómputo." },
+    { amount: 10000000, title: "🏆 ¡IA IMPARABLE!", body: "Has generado ⚡10,000,000 créditos de cómputo." },
+    { amount: 1000000000, title: "🏆 ¡POTENCIA DE CÓMPUTO MASIVA!", body: "Has generado ⚡1,000,000,000 créditos de cómputo." }
+  ];
 
-  return Math.floor(number).toLocaleString("en-US");
-}
+  const elements = {};
+  let state;
+  let audioContext = null;
+  let pendingOfflineMoney = 0;
 
-function getUpgradeLevel(id) {
-  return state.upgrades[id] || 0;
-}
+  function createNewState() {
+    const upgrades = {};
+    Object.keys(defaultUpgrades).forEach(function (id) {
+      upgrades[id] = 0;
+    });
 
-function getUpgradeCost(upgrade) {
-  return Math.floor(upgrade.baseCost * Math.pow(upgrade.growth, getUpgradeLevel(upgrade.id)));
-}
-
-function calculateMultiplier() {
-  const prestigeMultiplier = 1 + state.prestige * 0.1;
-  const upgradeMultiplier = 1 + getUpgradeLevel("multiplier") * 0.1;
-  const levelMultiplier = 1 + (state.level - 1) * 0.02;
-  return prestigeMultiplier * upgradeMultiplier * levelMultiplier;
-}
-
-function getMoneyPerClick() {
-  return (1 + getUpgradeLevel("goldenFinger")) * calculateMultiplier();
-}
-
-function getPassivePerSecond() {
-  const autoClicker = getUpgradeLevel("autoClicker");
-  const bank = getUpgradeLevel("bank") * 25;
-  return (autoClicker + bank) * calculateMultiplier();
-}
-
-function getInvestmentPayout() {
-  return getUpgradeLevel("investment") * 1000 * calculateMultiplier();
-}
-
-function getMoneyPerSecond() {
-  return getPassivePerSecond() + getInvestmentPayout() / INVESTMENT_INTERVAL;
-}
-
-function getXpNeeded() {
-  return Math.floor(100 * Math.pow(1.24, state.level - 1));
-}
-
-function addMoney(amount, options = {}) {
-  if (amount <= 0) return;
-
-  state.money += amount;
-  state.totalMoney += amount;
-  state.maxMoney = Math.max(state.maxMoney, state.money);
-  state.runMaxMoney = Math.max(state.runMaxMoney, state.money);
-  state.xp += Math.max(1, amount * 0.15);
-
-  checkLevelUp();
-  checkMilestones();
-  checkAchievements();
-
-  if (options.floating !== false) {
-    showFloatingText(`+$${formatNumber(amount)}`);
-  }
-
-  updateUI();
-}
-
-function handleClick() {
-  const earned = getMoneyPerClick();
-  state.clicks += 1;
-  addMoney(earned, { source: "click" });
-  animateClickButton();
-  createParticles();
-  playSound("click");
-  saveGame();
-}
-
-function buyUpgrade(id) {
-  const upgrade = upgradeDefinitions.find(item => item.id === id);
-  if (!upgrade || state.runMaxMoney < upgrade.unlockAt) return;
-
-  const cost = getUpgradeCost(upgrade);
-  if (state.money < cost) return;
-
-  state.money -= cost;
-  state.upgrades[id] = getUpgradeLevel(id) + 1;
-  showNotification("Mejora comprada", `${upgrade.icon} ${upgrade.name} ahora es nivel ${state.upgrades[id]}.`);
-  markUpgradePurchased(id);
-  playSound("buy");
-  checkAchievements();
-  updateUI();
-  saveGame();
-}
-
-function calculatePrestige() {
-  if (state.money < 1000000) return 0;
-  return Math.max(1, Math.floor(Math.log10(state.money / 1000000)) + 1);
-}
-
-function doPrestige() {
-  const points = calculatePrestige();
-  if (points <= 0) return;
-
-  state.prestige += points;
-  state.money = 0;
-  state.level = 1;
-  state.xp = 0;
-  state.runMaxMoney = 0;
-  state.upgrades = Object.fromEntries(upgradeDefinitions.map(upgrade => [upgrade.id, 0]));
-  investmentTimer = 0;
-
-  elements.prestigeModal.close();
-  showNotification("Prestigio completado", `💎 +${points} puntos. Ingresos permanentes: +${state.prestige * 10}%.`);
-  showLevelBurst("💎 PRESTIGIO");
-  playSound("prestige");
-  checkAchievements();
-  updateUI();
-  saveGame();
-}
-
-function saveGame() {
-  state.lastSaved = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function loadGame() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) {
-    state = defaultState();
-    return;
-  }
-
-  try {
-    const parsed = JSON.parse(saved);
-    const fresh = defaultState();
-    state = {
-      ...fresh,
-      ...parsed,
-      upgrades: { ...fresh.upgrades, ...(parsed.upgrades || {}) },
-      achievements: parsed.achievements || {},
-      milestones: parsed.milestones || {},
-      settings: { ...fresh.settings, ...(parsed.settings || {}) }
+    return {
+      money: 0,
+      level: 1,
+      xp: 0,
+      prestige: 0,
+      clicks: 0,
+      totalEarned: 0,
+      upgrades: upgrades,
+      achievements: [],
+      milestones: [],
+      timers: {
+        investment: 0
+      },
+      settings: {
+        sound: true,
+        animations: true
+      },
+      lastSaved: Date.now()
     };
-  } catch (error) {
-    state = defaultState();
-  }
-}
-
-function resetGame() {
-  const confirmed = window.confirm("¿Seguro que quieres borrar la partida? Esta acción no se puede deshacer.");
-  if (!confirmed) return;
-
-  localStorage.removeItem(STORAGE_KEY);
-  state = defaultState();
-  investmentTimer = 0;
-  elements.settingsModal.close();
-  showNotification("Partida reiniciada", "Has empezado una partida nueva.");
-  updateUI();
-  saveGame();
-}
-
-function calculateOfflineProgress() {
-  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - (state.lastSaved || Date.now())) / 1000));
-  const cappedSeconds = Math.min(elapsedSeconds, OFFLINE_LIMIT_SECONDS);
-  const reward = getMoneyPerSecond() * cappedSeconds;
-  return {
-    elapsedSeconds,
-    cappedSeconds,
-    reward
-  };
-}
-
-function showFloatingText(text) {
-  if (!state.settings.animations) return;
-
-  const floating = document.createElement("span");
-  floating.className = "floating-text";
-  floating.textContent = text;
-  floating.style.setProperty("--drift", `${Math.round(Math.random() * 80 - 40)}px`);
-  floating.style.left = `${44 + Math.random() * 12}%`;
-  floating.style.top = `${34 + Math.random() * 18}%`;
-  elements.floatingLayer.appendChild(floating);
-  window.setTimeout(() => floating.remove(), 720);
-}
-
-function unlockAchievement(id) {
-  if (state.achievements[id]) return;
-
-  const achievement = achievements.find(item => item.id === id);
-  if (!achievement) return;
-
-  state.achievements[id] = true;
-  showNotification(achievement.title, achievement.text);
-  playSound("achievement");
-}
-
-function showNotification(title, text) {
-  const toast = document.createElement("div");
-  toast.className = "toast";
-  toast.innerHTML = `<strong>${title}</strong><p>${text}</p>`;
-  elements.toastStack.appendChild(toast);
-  window.setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(8px)";
-    window.setTimeout(() => toast.remove(), 220);
-  }, 3200);
-}
-
-function checkAchievements() {
-  achievements.forEach(achievement => {
-    if (!state.achievements[achievement.id] && achievement.check(state)) {
-      unlockAchievement(achievement.id);
-    }
-  });
-}
-
-function checkMilestones() {
-  milestones.forEach(milestone => {
-    if (!state.milestones[milestone.value] && state.maxMoney >= milestone.value) {
-      state.milestones[milestone.value] = true;
-      showNotification(`🏆 ${milestone.title}`, milestone.text);
-      playSound("achievement");
-    }
-  });
-}
-
-function checkLevelUp() {
-  let leveled = false;
-
-  while (state.xp >= getXpNeeded()) {
-    state.xp -= getXpNeeded();
-    state.level += 1;
-    leveled = true;
   }
 
-  if (leveled) {
-    showNotification(`🎉 ¡NIVEL ${state.level}!`, "Tu multiplicador ha aumentado ligeramente.");
-    showLevelBurst(`🎉 ¡NIVEL ${state.level}!`);
-    playSound("level");
+  function init() {
+    cacheElements();
+    loadGame();
+    bindEvents();
+    applySettings();
+    calculateOfflineProgress();
+    renderAll();
+    setInterval(tick, 1000);
+    setInterval(saveGame, AUTOSAVE_INTERVAL);
   }
-}
 
-function updateUI() {
-  const multiplier = calculateMultiplier();
-  const xpNeeded = getXpNeeded();
-  const prestigeGain = calculatePrestige();
+  function cacheElements() {
+    elements.app = document.getElementById("app");
+    elements.moneyDisplay = document.getElementById("moneyDisplay");
+    elements.clickIncome = document.getElementById("clickIncome");
+    elements.secondIncome = document.getElementById("secondIncome");
+    elements.multiplierDisplay = document.getElementById("multiplierDisplay");
+    elements.moneyButton = document.getElementById("moneyButton");
+    elements.clickZone = document.getElementById("clickZone");
+    elements.levelDisplay = document.getElementById("levelDisplay");
+    elements.xpDisplay = document.getElementById("xpDisplay");
+    elements.xpBar = document.getElementById("xpBar");
+    elements.levelCard = document.getElementById("levelCard");
+    elements.upgradesList = document.getElementById("upgradesList");
+    elements.prestigeDisplay = document.getElementById("prestigeDisplay");
+    elements.prestigeBonusDisplay = document.getElementById("prestigeBonusDisplay");
+    elements.prestigeButton = document.getElementById("prestigeButton");
+    elements.prestigeRequirement = document.getElementById("prestigeRequirement");
+    elements.achievementList = document.getElementById("achievementList");
+    elements.statsList = document.getElementById("statsList");
+    elements.toastStack = document.getElementById("toastStack");
+    elements.settingsButton = document.getElementById("settingsButton");
+    elements.settingsModal = document.getElementById("settingsModal");
+    elements.closeSettings = document.getElementById("closeSettings");
+    elements.soundToggle = document.getElementById("soundToggle");
+    elements.animationsToggle = document.getElementById("animationsToggle");
+    elements.saveButton = document.getElementById("saveButton");
+    elements.resetButton = document.getElementById("resetButton");
+    elements.prestigeModal = document.getElementById("prestigeModal");
+    elements.prestigeLossMoney = document.getElementById("prestigeLossMoney");
+    elements.prestigeGainPoints = document.getElementById("prestigeGainPoints");
+    elements.prestigeGainBonus = document.getElementById("prestigeGainBonus");
+    elements.cancelPrestige = document.getElementById("cancelPrestige");
+    elements.confirmPrestige = document.getElementById("confirmPrestige");
+    elements.offlineModal = document.getElementById("offlineModal");
+    elements.offlineTime = document.getElementById("offlineTime");
+    elements.offlineMoney = document.getElementById("offlineMoney");
+    elements.collectOffline = document.getElementById("collectOffline");
+  }
 
-  document.body.classList.toggle("no-animations", !state.settings.animations);
-  elements.moneyDisplay.textContent = `💰 $${formatNumber(state.money)}`;
-  elements.clickPower.textContent = `+$${formatNumber(getMoneyPerClick())} / click`;
-  elements.secondPower.textContent = `+$${formatNumber(getMoneyPerSecond())} / sec`;
-  elements.multiplierDisplay.textContent = `x${formatMultiplier(multiplier)}`;
-  elements.levelDisplay.textContent = `Nivel ${state.level}`;
-  elements.xpDisplay.textContent = `${formatNumber(state.xp)}/${formatNumber(xpNeeded)} XP`;
-  elements.xpFill.style.width = `${Math.min(100, (state.xp / xpNeeded) * 100)}%`;
-  elements.prestigePoints.textContent = `${state.prestige} 💎`;
-  elements.prestigeInfo.textContent = prestigeGain > 0
-    ? `Obtendrás ${prestigeGain} punto${prestigeGain === 1 ? "" : "s"} de prestigio y +${prestigeGain * 10}% permanente.`
-    : "Alcanza $1M para renacer con una bonificación permanente.";
-  elements.prestigeButton.disabled = prestigeGain <= 0;
-  elements.soundToggle.textContent = state.settings.sound ? "ON" : "OFF";
-  elements.animationToggle.textContent = state.settings.animations ? "ON" : "OFF";
+  function bindEvents() {
+    elements.moneyButton.addEventListener("click", handleClick);
+    elements.upgradesList.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-upgrade]");
+      if (button) {
+        buyUpgrade(button.dataset.upgrade);
+      }
+    });
+    elements.prestigeButton.addEventListener("click", openPrestigeModal);
+    elements.confirmPrestige.addEventListener("click", doPrestige);
+    elements.cancelPrestige.addEventListener("click", function () {
+      closeModal(elements.prestigeModal);
+    });
+    elements.settingsButton.addEventListener("click", function () {
+      openModal(elements.settingsModal);
+    });
+    elements.closeSettings.addEventListener("click", function () {
+      closeModal(elements.settingsModal);
+    });
+    elements.soundToggle.addEventListener("click", function () {
+      state.settings.sound = !state.settings.sound;
+      applySettings();
+      saveGame();
+    });
+    elements.animationsToggle.addEventListener("click", function () {
+      state.settings.animations = !state.settings.animations;
+      applySettings();
+      saveGame();
+    });
+    elements.saveButton.addEventListener("click", function () {
+      saveGame();
+      playSound("buy");
+      showNotification("💾 Simulación guardada", "Tu imperio de IA está a salvo.");
+    });
+    elements.resetButton.addEventListener("click", resetGame);
+    elements.collectOffline.addEventListener("click", function () {
+      if (pendingOfflineMoney > 0) {
+        addMoney(pendingOfflineMoney);
+        pendingOfflineMoney = 0;
+        playSound("buy");
+        renderAll();
+        saveGame();
+      }
+      closeModal(elements.offlineModal);
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closeModal(elements.settingsModal);
+        closeModal(elements.prestigeModal);
+      }
+    });
+    window.addEventListener("beforeunload", saveGame);
+  }
 
-  renderUpgrades();
-  renderAchievements();
-  renderStats();
-}
+  function handleClick() {
+    const gained = getMoneyPerClick();
+    state.clicks += 1;
+    addMoney(gained);
+    addExperience(Math.max(1, gained * 0.16));
+    showFloatingText("+" + RESOURCE_ICON + formatNumber(gained), elements.clickZone);
+    createParticles();
+    animateButton();
+    playSound("click");
+    checkProgressRewards();
+    renderAll();
+    saveGame();
+  }
 
-function renderUpgrades() {
-  elements.upgradeList.innerHTML = "";
-
-  upgradeDefinitions.forEach(upgrade => {
-    const level = getUpgradeLevel(upgrade.id);
-    const unlocked = state.runMaxMoney >= upgrade.unlockAt;
-    const cost = getUpgradeCost(upgrade);
-    const card = document.createElement("article");
-
-    if (!unlocked) {
-      card.className = "upgrade-card locked";
-      card.innerHTML = `
-        <strong>🔒 BLOQUEADO</strong>
-        <span>${upgrade.name}</span>
-        <span>Desbloquea al alcanzar $${formatNumber(upgrade.unlockAt)}</span>
-      `;
-      elements.upgradeList.appendChild(card);
+  function buyUpgrade(upgradeId) {
+    const upgrade = defaultUpgrades[upgradeId];
+    if (!upgrade || !isUpgradeUnlocked(upgrade)) {
       return;
     }
 
-    card.className = `upgrade-card ${state.money >= cost ? "affordable" : ""}`;
-    card.dataset.upgradeId = upgrade.id;
-    card.innerHTML = `
-      <div class="upgrade-icon">${upgrade.icon}</div>
-      <div>
-        <div class="upgrade-name">
-          <span>${upgrade.name}</span>
-          <span>NIVEL ${level}</span>
-        </div>
-        <div class="upgrade-desc">${upgrade.effect(level)} · Siguiente: ${upgrade.summary(level)}</div>
-      </div>
-      <button class="buy-button" type="button" ${state.money < cost ? "disabled" : ""}>$${formatNumber(cost)}</button>
-    `;
-    card.querySelector("button").addEventListener("click", () => buyUpgrade(upgrade.id));
-    elements.upgradeList.appendChild(card);
-  });
-}
+    const cost = getUpgradeCost(upgradeId);
+    if (state.money < cost) {
+      showNotification("⚠️ Cómputo insuficiente", "Te faltan " + RESOURCE_ICON + formatNumber(cost - state.money) + ".");
+      return;
+    }
 
-function renderAchievements() {
-  const unlockedCount = achievements.filter(achievement => state.achievements[achievement.id]).length;
-  elements.achievementCount.textContent = `${unlockedCount}/${achievements.length}`;
-  elements.achievementList.innerHTML = "";
-
-  achievements.forEach(achievement => {
-    const unlocked = Boolean(state.achievements[achievement.id]);
-    const card = document.createElement("article");
-    card.className = `achievement-card ${unlocked ? "unlocked" : ""}`;
-    card.innerHTML = `
-      <strong>${unlocked ? achievement.title : "🔒 Logro oculto"}</strong>
-      <p>${achievement.text}</p>
-    `;
-    elements.achievementList.appendChild(card);
-  });
-}
-
-function renderStats() {
-  const stats = [
-    ["Clicks totales", formatNumber(state.clicks)],
-    ["Dinero total generado", `$${formatNumber(state.totalMoney)}`],
-    ["Dinero actual", `$${formatNumber(state.money)}`],
-    ["Dinero por click", `$${formatNumber(getMoneyPerClick())}`],
-    ["Dinero por segundo", `$${formatNumber(getMoneyPerSecond())}`],
-    ["Nivel", state.level],
-    ["Prestigios", state.prestige],
-    ["Multiplicador", `x${formatMultiplier(calculateMultiplier())}`]
-  ];
-
-  elements.statsList.innerHTML = stats.map(([label, value]) => `
-    <article class="stat-card">
-      <strong>${label}</strong>
-      <span>${value}</span>
-    </article>
-  `).join("");
-}
-
-function formatMultiplier(value) {
-  return value < 10 ? value.toFixed(2).replace(/\.00$/, "") : value.toFixed(1);
-}
-
-function animateClickButton() {
-  if (!state.settings.animations) return;
-
-  elements.clickButton.classList.remove("pressed");
-  void elements.clickButton.offsetWidth;
-  elements.clickButton.classList.add("pressed");
-  window.setTimeout(() => elements.clickButton.classList.remove("pressed"), 120);
-}
-
-function createParticles() {
-  if (!state.settings.animations) return;
-
-  for (let i = 0; i < 8; i += 1) {
-    const particle = document.createElement("span");
-    particle.className = "particle";
-    particle.style.setProperty("--x", `${Math.round(Math.random() * 170 - 85)}px`);
-    particle.style.setProperty("--y", `${Math.round(Math.random() * 170 - 110)}px`);
-    particle.style.background = i % 2 === 0 ? "#f59e0b" : "#22c55e";
-    elements.floatingLayer.appendChild(particle);
-    window.setTimeout(() => particle.remove(), 650);
-  }
-}
-
-function markUpgradePurchased(id) {
-  if (!state.settings.animations) return;
-
-  window.requestAnimationFrame(() => {
-    const card = elements.upgradeList.querySelector(`[data-upgrade-id="${id}"]`);
-    if (!card) return;
-    card.classList.add("purchased");
-    window.setTimeout(() => card.classList.remove("purchased"), 500);
-  });
-}
-
-function showLevelBurst(text) {
-  if (!state.settings.animations) return;
-
-  elements.levelBurst.textContent = text;
-  elements.levelBurst.classList.remove("show");
-  void elements.levelBurst.offsetWidth;
-  elements.levelBurst.classList.add("show");
-  window.setTimeout(() => elements.levelBurst.classList.remove("show"), 1120);
-}
-
-function playSound(type) {
-  if (!state.settings.sound) return;
-
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return;
-
-  audioContext ||= new AudioContextClass();
-  if (audioContext.state === "suspended") {
-    audioContext.resume();
+    state.money -= cost;
+    state.upgrades[upgradeId] += 1;
+    addExperience(Math.max(5, cost * 0.03));
+    playSound("buy");
+    markUpgradeBought(upgradeId);
+    checkProgressRewards();
+    renderAll();
+    saveGame();
   }
 
-  const now = audioContext.currentTime;
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  const presets = {
-    click: [520, 0.05, "sine", 0.035],
-    buy: [680, 0.09, "triangle", 0.045],
-    level: [880, 0.16, "sine", 0.055],
-    achievement: [760, 0.14, "square", 0.035],
-    prestige: [420, 0.24, "sawtooth", 0.05]
-  };
-  const [frequency, duration, wave, volume] = presets[type] || presets.click;
-
-  oscillator.type = wave;
-  oscillator.frequency.setValueAtTime(frequency, now);
-  oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.4, now + duration);
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-  oscillator.connect(gain);
-  gain.connect(audioContext.destination);
-  oscillator.start(now);
-  oscillator.stop(now + duration + 0.02);
-}
-
-function openPrestigeModal() {
-  const points = calculatePrestige();
-  if (points <= 0) return;
-
-  elements.prestigeSummary.innerHTML = `
-    <div><strong>Perderás:</strong></div>
-    <div>❌ $${formatNumber(state.money)}</div>
-    <div>❌ Todas las mejoras</div>
-    <div>❌ Nivel ${state.level}</div>
-    <div><strong>Obtendrás:</strong></div>
-    <div>💎 +${points} punto${points === 1 ? "" : "s"} de prestigio</div>
-    <div>🔥 +${points * 10}% ingresos permanentes</div>
-  `;
-  elements.prestigeModal.showModal();
-}
-
-function showOfflineModal(offline) {
-  pendingOfflineReward = offline.reward;
-  elements.offlineTime.textContent = `Han pasado ${formatDuration(offline.cappedSeconds)}.`;
-  elements.offlineReward.textContent = `+$${formatNumber(offline.reward)}`;
-  elements.offlineModal.showModal();
-}
-
-function formatDuration(seconds) {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes}min`;
-  return `${Math.max(1, minutes)}min`;
-}
-
-function gameTick() {
-  const passiveIncome = getPassivePerSecond();
-  if (passiveIncome > 0) {
-    addMoney(passiveIncome, { source: "auto", floating: false });
+  function calculateMultiplier() {
+    const upgradeMultiplier = 1 + (state.upgrades.multiplier || 0) * defaultUpgrades.multiplier.effect;
+    const levelMultiplier = 1 + (state.level - 1) * 0.02;
+    const prestigeMultiplier = getPrestigeMultiplier();
+    return upgradeMultiplier * levelMultiplier * prestigeMultiplier;
   }
 
-  investmentTimer += 1;
-  if (investmentTimer >= INVESTMENT_INTERVAL) {
-    investmentTimer = 0;
-    const payout = getInvestmentPayout();
-    if (payout > 0) {
-      addMoney(payout, { source: "investment" });
-      showNotification("📈 Inversión cobrada", `Has recibido $${formatNumber(payout)}.`);
-      playSound("buy");
+  function calculatePrestige() {
+    if (state.totalEarned < PRESTIGE_BASE) {
+      return 0;
+    }
+    return Math.max(1, Math.floor(Math.sqrt(state.totalEarned / PRESTIGE_BASE)));
+  }
+
+  function saveGame() {
+    state.lastSaved = Date.now();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+  }
+
+  function loadGame() {
+    const saved = localStorage.getItem(SAVE_KEY);
+    if (!saved) {
+      state = createNewState();
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved);
+      state = mergeState(createNewState(), parsed);
+    } catch (error) {
+      state = createNewState();
+      showNotification("⚠️ Simulación nueva", "No se pudo cargar el guardado anterior.");
     }
   }
 
-  saveGame();
-}
-
-function bindEvents() {
-  elements.clickButton.addEventListener("click", handleClick);
-  elements.prestigeButton.addEventListener("click", openPrestigeModal);
-  elements.confirmPrestigeButton.addEventListener("click", doPrestige);
-  elements.cancelPrestigeButton.addEventListener("click", () => elements.prestigeModal.close());
-  elements.settingsButton.addEventListener("click", () => elements.settingsModal.showModal());
-
-  elements.soundToggle.addEventListener("click", () => {
-    state.settings.sound = !state.settings.sound;
-    playSound("click");
-    updateUI();
+  function resetGame() {
+    const confirmed = window.confirm("¿Seguro que quieres borrar la simulación? Perderás todo el progreso guardado.");
+    if (!confirmed) {
+      return;
+    }
+    localStorage.removeItem(SAVE_KEY);
+    state = createNewState();
+    pendingOfflineMoney = 0;
+    closeModal(elements.settingsModal);
+    closeModal(elements.offlineModal);
+    renderAll();
     saveGame();
-  });
-
-  elements.animationToggle.addEventListener("click", () => {
-    state.settings.animations = !state.settings.animations;
-    updateUI();
-    saveGame();
-  });
-
-  elements.manualSaveButton.addEventListener("click", () => {
-    saveGame();
-    showNotification("Partida guardada", "Tu progreso se ha guardado en este navegador.");
-  });
-
-  elements.resetButton.addEventListener("click", resetGame);
-  elements.collectOfflineButton.addEventListener("click", () => {
-    addMoney(pendingOfflineReward, { source: "offline", floating: false });
-    pendingOfflineReward = 0;
-    elements.offlineModal.close();
-    playSound("buy");
-    saveGame();
-  });
-
-  window.addEventListener("beforeunload", saveGame);
-}
-
-function init() {
-  loadGame();
-  const offline = calculateOfflineProgress();
-  bindEvents();
-  updateUI();
-
-  if (offline.cappedSeconds >= 60 && offline.reward >= 1) {
-    showOfflineModal(offline);
+    showNotification("🗑️ Simulación reiniciada", "Has empezado con una IA básica.");
   }
 
-  window.setInterval(gameTick, 1000);
-  window.setInterval(saveGame, 15000);
-}
+  function calculateOfflineProgress() {
+    const secondsAway = Math.floor((Date.now() - (state.lastSaved || Date.now())) / 1000);
+    const effectiveSeconds = Math.min(secondsAway, OFFLINE_LIMIT_SECONDS);
+    const perSecond = getMoneyPerSecond();
+    const earned = effectiveSeconds * perSecond;
 
-init();
+    if (earned >= 1 && effectiveSeconds >= 60) {
+      pendingOfflineMoney = earned;
+      elements.offlineTime.textContent = "Han pasado " + formatDuration(effectiveSeconds) + ".";
+      elements.offlineMoney.textContent = RESOURCE_ICON + " +" + formatNumber(earned);
+      openModal(elements.offlineModal);
+    }
+  }
+
+  function formatNumber(value) {
+    const number = Math.max(0, Number(value) || 0);
+    const units = [
+      { value: 1000000000000, suffix: "T" },
+      { value: 1000000000, suffix: "B" },
+      { value: 1000000, suffix: "M" }
+    ];
+
+    for (let i = 0; i < units.length; i += 1) {
+      if (number >= units[i].value) {
+        const scaled = number / units[i].value;
+        const rounded = scaled >= 100 ? Math.floor(scaled).toString() : scaled.toFixed(1).replace(/\.0$/, "");
+        return rounded + units[i].suffix;
+      }
+    }
+
+    return Math.floor(number).toLocaleString("en-US");
+  }
+
+  function showFloatingText(text, parent) {
+    if (!state.settings.animations) {
+      return;
+    }
+    const node = document.createElement("div");
+    node.className = "floating-text";
+    node.textContent = text;
+    node.style.left = 42 + Math.random() * 16 + "%";
+    parent.appendChild(node);
+    window.setTimeout(function () {
+      node.remove();
+    }, 720);
+  }
+
+  function unlockAchievement(id) {
+    if (state.achievements.indexOf(id) !== -1) {
+      return;
+    }
+    const achievement = achievements.find(function (item) { return item.id === id; });
+    if (!achievement) {
+      return;
+    }
+    state.achievements.push(id);
+    playSound("achievement");
+    showNotification(achievement.icon + " " + achievement.title, achievement.text);
+  }
+
+  function showNotification(title, body) {
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.innerHTML = "<strong></strong><p></p>";
+    toast.querySelector("strong").textContent = title;
+    toast.querySelector("p").textContent = body || "";
+    elements.toastStack.appendChild(toast);
+    window.setTimeout(function () {
+      toast.remove();
+    }, 4100);
+  }
+
+  function tick() {
+    const steadyIncome = getSteadyMoneyPerSecond();
+    const timedIncome = processTimedProduction();
+    const totalIncome = steadyIncome + timedIncome;
+
+    if (totalIncome > 0) {
+      addMoney(totalIncome);
+      addExperience(Math.max(1, totalIncome * 0.04));
+      checkProgressRewards();
+      renderAll();
+    }
+  }
+
+  function addMoney(amount) {
+    state.money += amount;
+    state.totalEarned += amount;
+  }
+
+  function addExperience(amount) {
+    state.xp += amount;
+    let leveled = false;
+    while (state.xp >= getXpNeeded()) {
+      state.xp -= getXpNeeded();
+      state.level += 1;
+      leveled = true;
+    }
+
+    if (leveled) {
+      elements.levelCard.classList.remove("level-up-flash");
+      void elements.levelCard.offsetWidth;
+      elements.levelCard.classList.add("level-up-flash");
+      playSound("level");
+      showNotification("🎉 ¡" + getAIStage(state.level).toUpperCase() + "!", "Tu multiplicador ha aumentado.");
+    }
+  }
+
+  function getXpNeeded() {
+    return Math.floor(100 * Math.pow(1.18, state.level - 1));
+  }
+
+  function getBaseClick() {
+    return 1 + (state.upgrades.goldenFinger || 0) * defaultUpgrades.goldenFinger.effect;
+  }
+
+  function getRawAuto() {
+    return Object.keys(defaultUpgrades).reduce(function (total, id) {
+      const upgrade = defaultUpgrades[id];
+      if (upgrade.type !== "auto") {
+        return total;
+      }
+      return total + (state.upgrades[id] || 0) * upgrade.effect;
+    }, 0);
+  }
+
+  function getRawTimedAverage() {
+    return Object.keys(defaultUpgrades).reduce(function (total, id) {
+      const upgrade = defaultUpgrades[id];
+      if (upgrade.type !== "burst") {
+        return total;
+      }
+      const interval = upgrade.interval || 1;
+      return total + ((state.upgrades[id] || 0) * upgrade.effect) / interval;
+    }, 0);
+  }
+
+  function getMoneyPerClick() {
+    return getBaseClick() * calculateMultiplier();
+  }
+
+  function getSteadyMoneyPerSecond() {
+    return getRawAuto() * calculateMultiplier();
+  }
+
+  function getMoneyPerSecond() {
+    return (getRawAuto() + getRawTimedAverage()) * calculateMultiplier();
+  }
+
+  function processTimedProduction() {
+    let earned = 0;
+    Object.keys(defaultUpgrades).forEach(function (id) {
+      const upgrade = defaultUpgrades[id];
+      const level = state.upgrades[id] || 0;
+      if (upgrade.type !== "burst" || level <= 0) {
+        return;
+      }
+
+      state.timers[id] = (state.timers[id] || 0) + 1;
+      if (state.timers[id] >= upgrade.interval) {
+        state.timers[id] = 0;
+        const amount = level * upgrade.effect * calculateMultiplier();
+        earned += amount;
+        showFloatingText("+" + RESOURCE_ICON + formatNumber(amount), elements.clickZone);
+        showNotification("🔬 Investigación completada", "+" + RESOURCE_ICON + formatNumber(amount) + " se añadieron al clúster.");
+        playSound("buy");
+      }
+    });
+    return earned;
+  }
+
+  function getPrestigeMultiplier() {
+    return 1 + state.prestige * 0.1;
+  }
+
+  function getUpgradeCost(upgradeId) {
+    const upgrade = defaultUpgrades[upgradeId];
+    const level = state.upgrades[upgradeId] || 0;
+    return Math.floor(upgrade.baseCost * Math.pow(upgrade.growth, level));
+  }
+
+  function getUpgradeValue(upgrade) {
+    const level = state.upgrades[upgrade.id] || 0;
+    if (upgrade.type === "click") {
+      return level * upgrade.effect;
+    }
+    if (upgrade.type === "multiplier") {
+      return Math.round(level * upgrade.effect * 100);
+    }
+    return level * upgrade.effect;
+  }
+
+  function isUpgradeUnlocked(upgrade) {
+    return state.totalEarned >= upgrade.unlockAt || state.money >= upgrade.unlockAt;
+  }
+
+  function renderAll() {
+    renderHero();
+    renderUpgrades();
+    renderPrestige();
+    renderAchievements();
+    renderStats();
+    applySettings();
+  }
+
+  function renderHero() {
+    const xpNeeded = getXpNeeded();
+    const xpPercent = Math.min(100, (state.xp / xpNeeded) * 100);
+    elements.moneyDisplay.textContent = "🧠 " + RESOURCE_ICON + formatNumber(state.money);
+    elements.clickIncome.textContent = "+" + RESOURCE_ICON + formatNumber(getMoneyPerClick()) + " / click";
+    elements.secondIncome.textContent = "+" + RESOURCE_ICON + formatNumber(getMoneyPerSecond()) + " / sec";
+    elements.multiplierDisplay.textContent = "x" + formatMultiplier(calculateMultiplier());
+    elements.levelDisplay.textContent = "Nivel " + state.level + " · " + getAIStage(state.level);
+    elements.xpDisplay.textContent = formatNumber(state.xp) + "/" + formatNumber(xpNeeded) + " XP";
+    elements.xpBar.style.width = xpPercent + "%";
+  }
+
+  function renderUpgrades() {
+    const html = Object.keys(defaultUpgrades).map(function (id) {
+      const upgrade = defaultUpgrades[id];
+      const unlocked = isUpgradeUnlocked(upgrade);
+      const level = state.upgrades[id] || 0;
+      const cost = getUpgradeCost(id);
+      const affordable = state.money >= cost;
+      const currentValue = getUpgradeValue(upgrade);
+
+      if (!unlocked) {
+        return [
+          '<article class="upgrade-card locked-card">',
+          '<div class="upgrade-icon">🔒</div>',
+          '<div class="upgrade-info">',
+          '<div class="upgrade-title"><span>' + upgrade.name + '</span><span>BLOQUEADO</span></div>',
+          '<p class="locked-text">Desbloquea al alcanzar ' + RESOURCE_ICON + formatNumber(upgrade.unlockAt) + '</p>',
+          '</div>',
+          '</article>'
+        ].join("");
+      }
+
+      return [
+        '<article class="upgrade-card ' + (affordable ? "affordable" : "") + '" id="upgrade-' + id + '">',
+        '<div class="upgrade-icon">' + upgrade.icon + '</div>',
+        '<div class="upgrade-info">',
+        '<div class="upgrade-title"><span>' + upgrade.name + '</span><span>NIVEL ' + level + '</span></div>',
+        '<p class="upgrade-description">' + getUpgradeDescription(upgrade) + '</p>',
+        '<div class="upgrade-cost">' + RESOURCE_ICON + formatNumber(cost) + '</div>',
+        '</div>',
+        '<button class="buy-button" type="button" data-upgrade="' + id + '" ' + (affordable ? "" : "disabled") + '>COMPRAR</button>',
+        '</article>'
+      ].join("");
+    }).join("");
+
+    elements.upgradesList.innerHTML = html;
+  }
+
+  function getUpgradeDescription(upgrade) {
+    const level = state.upgrades[upgrade.id] || 0;
+    const nextValue = upgrade.type === "multiplier"
+      ? Math.round((level + 1) * upgrade.effect * 100)
+      : (level + 1) * upgrade.effect;
+    return upgrade.description.replace("{value}", formatNumber(nextValue));
+  }
+
+  function renderPrestige() {
+    const gained = calculatePrestige();
+    const canPrestige = gained > 0;
+    elements.prestigeDisplay.textContent = formatNumber(state.prestige);
+    elements.prestigeBonusDisplay.textContent = "+" + Math.round((getPrestigeMultiplier() - 1) * 100) + "%";
+    elements.prestigeButton.disabled = !canPrestige;
+    elements.prestigeRequirement.textContent = canPrestige
+      ? "Obtendrás +" + gained + " puntos de generación."
+      : "Disponible desde " + RESOURCE_ICON + "1M de cómputo generado en total.";
+  }
+
+  function renderAchievements() {
+    elements.achievementList.innerHTML = achievements.map(function (achievement) {
+      const unlocked = state.achievements.indexOf(achievement.id) !== -1;
+      return [
+        '<article class="achievement ' + (unlocked ? "" : "locked") + '">',
+        '<span>' + (unlocked ? achievement.icon : "🔒") + '</span>',
+        '<div><strong>' + achievement.title + '</strong><p>' + achievement.text + '</p></div>',
+        '</article>'
+      ].join("");
+    }).join("");
+  }
+
+  function renderStats() {
+    const stats = [
+      ["Ciclos manuales", formatNumber(state.clicks)],
+      ["Cómputo total generado", RESOURCE_ICON + formatNumber(state.totalEarned)],
+      ["Cómputo actual", RESOURCE_ICON + formatNumber(state.money)],
+      ["Cómputo por click", RESOURCE_ICON + formatNumber(getMoneyPerClick())],
+      ["Cómputo por segundo", RESOURCE_ICON + formatNumber(getMoneyPerSecond())],
+      ["Nivel", formatNumber(state.level)],
+      ["Generaciones", formatNumber(state.prestige)]
+    ];
+
+    elements.statsList.innerHTML = stats.map(function (row) {
+      return "<dt>" + row[0] + "</dt><dd>" + row[1] + "</dd>";
+    }).join("");
+  }
+
+  function checkProgressRewards() {
+    achievements.forEach(function (achievement) {
+      if (achievement.check()) {
+        unlockAchievement(achievement.id);
+      }
+    });
+
+    milestones.forEach(function (milestone) {
+      if (state.totalEarned >= milestone.amount && state.milestones.indexOf(milestone.amount) === -1) {
+        state.milestones.push(milestone.amount);
+        playSound("achievement");
+        showNotification(milestone.title, milestone.body);
+      }
+    });
+  }
+
+  function openPrestigeModal() {
+    const gained = calculatePrestige();
+    if (gained <= 0) {
+      return;
+    }
+    elements.prestigeLossMoney.textContent = "❌ " + RESOURCE_ICON + formatNumber(state.money);
+    elements.prestigeGainPoints.textContent = "🧬 +" + gained + " Puntos de Generación";
+    elements.prestigeGainBonus.textContent = "🔥 +" + (gained * 10) + "% potencia permanente";
+    openModal(elements.prestigeModal);
+  }
+
+  function doPrestige() {
+    const gained = calculatePrestige();
+    if (gained <= 0) {
+      return;
+    }
+    const previousPrestige = state.prestige;
+    const currentSettings = state.settings;
+    const currentAchievements = state.achievements.slice();
+    const currentMilestones = state.milestones.slice();
+    state = createNewState();
+    state.prestige = previousPrestige + gained;
+    state.achievements = currentAchievements;
+    state.milestones = currentMilestones;
+    state.settings = currentSettings;
+    closeModal(elements.prestigeModal);
+    elements.app.classList.remove("prestige-flash");
+    void elements.app.offsetWidth;
+    elements.app.classList.add("prestige-flash");
+    unlockAchievement("rebirth");
+    playSound("prestige");
+    showNotification("🧬 ¡NUEVA GENERACIÓN!", "Has ganado +" + gained + " puntos de generación.");
+    renderAll();
+    saveGame();
+  }
+
+  function animateButton() {
+    if (!state.settings.animations) {
+      return;
+    }
+    elements.moneyButton.classList.remove("pressed");
+    void elements.moneyButton.offsetWidth;
+    elements.moneyButton.classList.add("pressed");
+    window.setTimeout(function () {
+      elements.moneyButton.classList.remove("pressed");
+    }, 110);
+  }
+
+  function createParticles() {
+    if (!state.settings.animations) {
+      return;
+    }
+    for (let i = 0; i < 9; i += 1) {
+      const particle = document.createElement("span");
+      const angle = (Math.PI * 2 * i) / 9;
+      const distance = 46 + Math.random() * 34;
+      particle.className = "particle";
+      particle.style.setProperty("--x", Math.cos(angle) * distance + "px");
+      particle.style.setProperty("--y", Math.sin(angle) * distance + "px");
+      elements.clickZone.appendChild(particle);
+      window.setTimeout(function () {
+        particle.remove();
+      }, 580);
+    }
+  }
+
+  function markUpgradeBought(upgradeId) {
+    if (!state.settings.animations) {
+      return;
+    }
+    window.requestAnimationFrame(function () {
+      const card = document.getElementById("upgrade-" + upgradeId);
+      if (!card) {
+        return;
+      }
+      card.classList.add("bought");
+      window.setTimeout(function () {
+        card.classList.remove("bought");
+      }, 380);
+    });
+  }
+
+  function applySettings() {
+    elements.soundToggle.textContent = state.settings.sound ? "ON" : "OFF";
+    elements.soundToggle.classList.toggle("off", !state.settings.sound);
+    elements.animationsToggle.textContent = state.settings.animations ? "ON" : "OFF";
+    elements.animationsToggle.classList.toggle("off", !state.settings.animations);
+    document.body.classList.toggle("animations-off", !state.settings.animations);
+  }
+
+  function playSound(type) {
+    if (!state.settings.sound || !window.AudioContext && !window.webkitAudioContext) {
+      return;
+    }
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!audioContext) {
+      audioContext = new AudioContextClass();
+    }
+
+    const presets = {
+      click: { frequency: 470, duration: 0.045, wave: "square", gain: 0.035 },
+      buy: { frequency: 720, duration: 0.07, wave: "triangle", gain: 0.045 },
+      level: { frequency: 940, duration: 0.12, wave: "sine", gain: 0.06 },
+      achievement: { frequency: 820, duration: 0.14, wave: "triangle", gain: 0.06 },
+      prestige: { frequency: 520, duration: 0.22, wave: "sawtooth", gain: 0.055 }
+    };
+    const preset = presets[type] || presets.click;
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = preset.wave;
+    oscillator.frequency.setValueAtTime(preset.frequency, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(preset.frequency * 1.35, audioContext.currentTime + preset.duration);
+    gain.gain.setValueAtTime(preset.gain, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + preset.duration);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + preset.duration);
+  }
+
+  function openModal(modal) {
+    modal.classList.remove("hidden");
+  }
+
+  function closeModal(modal) {
+    modal.classList.add("hidden");
+  }
+
+  function formatMultiplier(value) {
+    return value.toFixed(2).replace(/\.00$/, "").replace(/0$/, "");
+  }
+
+  function getAIStage(level) {
+    if (level >= 50) {
+      return "Superinteligencia";
+    }
+    if (level >= 35) {
+      return "IA autónoma";
+    }
+    if (level >= 24) {
+      return "IA multimodal";
+    }
+    if (level >= 14) {
+      return "IA avanzada";
+    }
+    if (level >= 6) {
+      return "IA entrenada";
+    }
+    return "IA básica";
+  }
+
+  function formatDuration(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return hours + "h " + minutes + "min";
+    }
+    return minutes + "min";
+  }
+
+  function mergeState(base, saved) {
+    const merged = Object.assign(base, saved);
+    merged.settings = Object.assign(base.settings, saved.settings || {});
+    merged.upgrades = Object.assign(base.upgrades, saved.upgrades || {});
+    merged.timers = Object.assign(base.timers, saved.timers || {});
+    merged.achievements = Array.isArray(saved.achievements) ? saved.achievements : [];
+    merged.milestones = Array.isArray(saved.milestones) ? saved.milestones : [];
+    return merged;
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
