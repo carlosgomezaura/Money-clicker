@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Empire</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell" id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon">🤖</span>
+        <span>AI EMPIRE</span>
+      </div>
+      <button class="icon-button" id="settingsButton" type="button" aria-label="Abrir configuración" title="Configuración">⚙️</button>
+    </header>
+
+    <main class="game-layout">
+      <section class="hero-panel" aria-labelledby="moneyTitle">
+        <p class="eyebrow" id="moneyTitle">CRÉDITOS DE CÓMPUTO</p>
+        <div class="money-display" id="moneyDisplay">⚡ 0</div>
+        <div class="income-strip">
+          <span id="clickIncome">+⚡1 / click</span>
+          <span id="secondIncome">+⚡0 / sec</span>
+          <span id="multiplierDisplay">x1</span>
+        </div>
+
+        <div class="click-zone" id="clickZone">
+          <button class="money-button" id="moneyButton" type="button" aria-label="Pulsar para generar cómputo">
+            <span class="coin">🧠</span>
+            <span>GENERAR</span>
+          </button>
+        </div>
+
+        <div class="level-card" id="levelCard">
+          <div class="level-line">
+            <strong id="levelDisplay">Nivel 1</strong>
+            <span id="xpDisplay">0/100 XP</span>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill" id="xpBar"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <section class="panel upgrades-panel" aria-labelledby="upgradesTitle">
+          <div class="panel-heading">
+            <h2 id="upgradesTitle">MEJORAS</h2>
+          </div>
+          <div class="upgrades-list" id="upgradesList"></div>
+        </section>
+
+        <aside class="side-column">
+          <section class="panel prestige-panel" aria-labelledby="prestigeTitle">
+            <div class="panel-heading">
+              <h2 id="prestigeTitle">🧬 NUEVA GENERACIÓN</h2>
+            </div>
+            <p class="muted">Reinicia tu laboratorio para conservar una mejora permanente del modelo.</p>
+            <div class="prestige-stats">
+              <span>Generaciones</span>
+              <strong id="prestigeDisplay">0</strong>
+              <span>Bonificación</span>
+              <strong id="prestigeBonusDisplay">+0%</strong>
+            </div>
+            <button class="primary-action" id="prestigeButton" type="button">EVOLUCIONAR</button>
+            <p class="requirement" id="prestigeRequirement">Disponible desde ⚡1M</p>
+          </section>
+
+          <section class="panel achievements-panel" aria-labelledby="achievementsTitle">
+            <div class="panel-heading">
+              <h2 id="achievementsTitle">LOGROS</h2>
+            </div>
+            <div class="achievement-list" id="achievementList"></div>
+          </section>
+
+          <section class="panel stats-panel" aria-labelledby="statsTitle">
+            <div class="panel-heading">
+              <h2 id="statsTitle">ESTADÍSTICAS</h2>
+            </div>
+            <dl class="stats-list" id="statsList"></dl>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <div class="modal hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="settingsTitle">⚙️ CONFIGURACIÓN</h2>
+        <button class="icon-button" id="closeSettings" type="button" aria-label="Cerrar configuración" title="Cerrar">✕</button>
+      </div>
+      <div class="settings-row">
+        <span>🔊 Sonido</span>
+        <button class="toggle-button" id="soundToggle" type="button">ON</button>
+      </div>
+      <div class="settings-row">
+        <span>✨ Animaciones</span>
+        <button class="toggle-button" id="animationsToggle" type="button">ON</button>
+      </div>
+      <div class="modal-actions">
+        <button class="primary-action" id="saveButton" type="button">💾 Guardar simulación</button>
+        <button class="danger-action" id="resetButton" type="button">🗑️ Borrar simulación</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="prestigeModal" role="dialog" aria-modal="true" aria-labelledby="prestigeConfirmTitle">
+    <div class="modal-card">
+      <h2 id="prestigeConfirmTitle">¿Seguro que quieres iniciar una nueva generación?</h2>
+      <div class="modal-columns">
+        <div>
+          <h3>Perderás:</h3>
+          <p id="prestigeLossMoney">❌ ⚡0</p>
+          <p>❌ Todas las mejoras</p>
+        </div>
+        <div>
+          <h3>Obtendrás:</h3>
+          <p id="prestigeGainPoints">🧬 +0 Puntos de Generación</p>
+          <p id="prestigeGainBonus">🔥 +0% potencia permanente</p>
+        </div>
+      </div>
+      <div class="modal-actions horizontal">
+        <button class="secondary-action" id="cancelPrestige" type="button">CANCELAR</button>
+        <button class="prestige-action" id="confirmPrestige" type="button">NUEVA GENERACIÓN</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="offlineModal" role="dialog" aria-modal="true" aria-labelledby="offlineTitle">
+    <div class="modal-card center-card">
+      <h2 id="offlineTitle">🌙 MIENTRAS ESTABAS FUERA</h2>
+      <p id="offlineTime">Han pasado 0min.</p>
+      <p>Tu infraestructura generó:</p>
+      <div class="offline-money" id="offlineMoney">⚡ +0</div>
+      <button class="primary-action" id="collectOffline" type="button">RECOGER</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
